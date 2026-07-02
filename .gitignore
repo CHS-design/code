@@ -1,0 +1,59 @@
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build/render output folders
+_build/
+**/_build/
+
+# Machine learning data, checkpoints, and generated artifacts
+data/
+**/data/
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.h5
+*.npy
+*.npz
+*.pkl
+*.joblib
+
+# Archives and compressed datasets
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+~$*
