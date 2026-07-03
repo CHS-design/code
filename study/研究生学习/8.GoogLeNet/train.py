@@ -21,12 +21,12 @@ def train_val_data_process():
 
     train_data, val_data = Data.random_split(train_data, [round(0.8*len(train_data)), round(0.2*len(train_data))])
     train_dataloader = Data.DataLoader(dataset=train_data,
-                                       batch_size=64,
+                                       batch_size=128,
                                        shuffle=True,
                                        num_workers=8)
 
     val_dataloader = Data.DataLoader(dataset=val_data,
-                                       batch_size=64,
+                                       batch_size=128,
                                        shuffle=True,
                                        num_workers=8)
 
@@ -192,5 +192,5 @@ if __name__ == '__main__':
     # 加载数据集
     train_data, val_data = train_val_data_process()
     # 利用现有的模型进行模型的训练
-    train_process = train_model_process(model, train_data, val_data, num_epochs=20)
+    train_process = train_model_process(model, train_data, val_data, num_epochs=50)
     matplot_acc_loss(train_process)
