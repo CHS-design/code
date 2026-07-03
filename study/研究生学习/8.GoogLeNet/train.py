@@ -87,11 +87,11 @@ def train_model_process(model, train_dataloader, val_dataloader, num_epochs):
             model.train()
 
             # 前向传播过程，输入为一个batch，输出为一个batch中对应的预测
-            output = model(b_x)
+            output, aux1, aux2 = model(b_x)
             # 查找每一行中最大值对应的行标
             pre_lab = torch.argmax(output, dim=1)
             # 计算每一个batch的损失函数
-            loss = criterion(output, b_y)
+            loss = criterion(output, b_y) + 0.3 * criterion(aux1, b_y) + 0.3 * criterion(aux2, b_y)
 
             # 将梯度初始化为0
             optimizer.zero_grad()
@@ -112,12 +112,13 @@ def train_model_process(model, train_dataloader, val_dataloader, num_epochs):
             b_y = b_y.to(device)
             # 设置模型为评估模式
             model.eval()
-            # 前向传播过程，输入为一个batch，输出为一个batch中对应的预测
-            output = model(b_x)
-            # 查找每一行中最大值对应的行标
-            pre_lab = torch.argmax(output, dim=1)
-            # 计算每一个batch的损失函数
-            loss = criterion(output, b_y)
+            with torch.no_grad():
+                # 前向传播过程，输入为一个batch，输出为一个batch中对应的预测
+                output = model(b_x)
+                # 查找每一行中最大值对应的行标
+                pre_lab = torch.argmax(output, dim=1)
+                # 计算每一个batch的损失函数
+                loss = criterion(output, b_y)
 
 
             # 对损失函数进行累加
@@ -191,5 +192,5 @@ if __name__ == '__main__':
     # 加载数据集
     train_data, val_data = train_val_data_process()
     # 利用现有的模型进行模型的训练
-    train_process = train_model_process(model, train_data, val_data, num_epochs=50)
+    train_process = train_model_process(model, train_data, val_data, num_epochs=20)
     matplot_acc_loss(train_process)
