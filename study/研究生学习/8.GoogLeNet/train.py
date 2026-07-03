@@ -187,8 +187,17 @@ def matplot_acc_loss(train_process):
 
 
 if __name__ == '__main__':
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BEST_MODEL_PATH = os.path.join(BASE_DIR, 'best_model.pth')
+
     # 加载需要的模型
     model = GoogLeNet(Inception)
+    if os.path.exists(BEST_MODEL_PATH):
+        model.load_state_dict(torch.load(BEST_MODEL_PATH, map_location='cpu'))
+        print("已加载 best_model.pth，继续训练")
+    else:
+        print("没有找到 best_model.pth，从头训练")
+
     # 加载数据集
     train_data, val_data = train_val_data_process()
     # 利用现有的模型进行模型的训练

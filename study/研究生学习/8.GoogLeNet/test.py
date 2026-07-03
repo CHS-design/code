@@ -61,7 +61,7 @@ def test_model_process(model, test_dataloader):
 if __name__ == "__main__":
     # 加载模型
     model = GoogLeNet(Inception)
-    model.load_state_dict(torch.load(BEST_MODEL_PATH))
+    model.load_state_dict(torch.load(BEST_MODEL_PATH, map_location='cpu'))
     # # 利用现有的模型进行模型的测试
     test_dataloader = test_data_process()
     test_acc = test_model_process(model, test_dataloader)
