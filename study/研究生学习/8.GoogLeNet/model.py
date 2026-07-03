@@ -1,0 +1,51 @@
+import torch
+from torch import nn
+from torchsummary import summary
+
+class Inception(nn.Module):
+    '''Inception模块 
+    c1:1x1卷积输出通道数 
+    c2:1x1卷积->3x3卷积输出通道数
+    c3:1x1卷积->5x5卷积输出通道数
+    c4:3x3最大池化->1x1卷积输出通道数
+    '''
+    def __init__(self, in_channels, c1, c2, c3, c4):
+        super(Inception, self).__init__()
+        self.Relu = nn.ReLU()
+
+        #路线1:1x1卷积
+        self.branch1 = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=c1, kernel_size=1)
+        )
+        #路线2:1x1卷积->3x3卷积
+        self.branch2 = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=c2[0], kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=c2[0], out_channels=c2[1], kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        #路线3:1x1卷积->5x5卷积
+        self.branch3 = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=c3[0], kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=c3[0], out_channels=c3[1], kernel_size=5, padding=2),
+            nn.ReLU()
+        )
+        #路线4:3x3最大池化->1x1卷积
+        self.branch4 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels=in_channels, out_channels=c4, kernel_size=1)
+        )
+
+    def forward(self, x):
+        #路线1
+        out1 = self.Relu(self.branch1(x))
+        #路线2
+        out2 = self.branch2(x)
+        #路线3
+        out3 = self.branch3(x)
+        #路线4
+        out4 = self.Relu(self.branch4(x))
+        #将四条路线的输出结果在通道维度上进行拼接
+        outputs = torch.cat((out1, out2, out3, out4), dim=1)
+        return outputs   
