@@ -54,7 +54,7 @@ class GoogLeNet(nn.Module):
     def __init__(self,Inception):
         super(GoogLeNet, self).__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3),
+            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=7, stride=2, padding=3),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         )
@@ -108,4 +108,4 @@ class GoogLeNet(nn.Module):
 if __name__ == '__main__':
     model = GoogLeNet(Inception)
     model = model.cuda()
-    summary(model, (3, 224, 224), device='cuda')
+    summary(model, (1, 224, 224), device='cuda')
