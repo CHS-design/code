@@ -1,57 +1,55 @@
-from PIL import Image
-import os
+from pathlib import Path
+
 import numpy as np
-
-# 文件夹路径，包含所有图片文件
-folder_path = 'data_cat_dog'
-
-# 初始化累积变量
-total_pixels = 0
-sum_normalized_pixel_values = np.zeros(3)  # 如果是RGB图像，需要三个通道的均值和方差
-
-# 遍历文件夹中的图片文件
-for root, dirs, files in os.walk(folder_path):
-    for filename in files:
-        if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp')):  # 可根据实际情况添加其他格式
-            image_path = os.path.join(root, filename)
-            image = Image.open(image_path)
-            image_array = np.array(image)
-
-            # 归一化像素值到0-1之间
-            normalized_image_array = image_array / 255.0
-
-            # print(image_path)
-            # print(normalized_image_array.shape)
-            # 累积归一化后的像素值和像素数量
-            total_pixels += normalized_image_array.size
-            sum_normalized_pixel_values += np.sum(normalized_image_array, axis=(0, 1))
-
-# 计算均值和方差
-mean = sum_normalized_pixel_values / total_pixels
+from PIL import Image
 
 
-sum_squared_diff = np.zeros(3)
-for root, dirs, files in os.walk(folder_path):
-    for filename in files:
-        if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp')):
-            image_path = os.path.join(root, filename)
-            image = Image.open(image_path)
-            image_array = np.array(image)
-            # 归一化像素值到0-1之间
-            normalized_image_array = image_array / 255.0
-            # print(normalized_image_array.shape)
-            # print(mean.shape)
-            # print(image_path)
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / 'data_me' / 'train'
+IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.bmp'}
+IMAGE_SIZE = (224, 224)
 
-            try:
-                diff = (normalized_image_array - mean) ** 2
-                sum_squared_diff += np.sum(diff, axis=(0, 1))
-            except:
-                print(f"捕获到自定义异常")
-            # diff = (normalized_image_array - mean) ** 2
-            # sum_squared_diff += np.sum(diff, axis=(0, 1))
+try:
+    RESAMPLE = Image.Resampling.BILINEAR
+except AttributeError:
+    RESAMPLE = Image.BILINEAR
 
-variance = sum_squared_diff / total_pixels
 
-print("Mean:", mean)
-print("Variance:", variance)
+def iter_image_paths(data_dir):
+    for image_path in data_dir.rglob('*'):
+        if image_path.suffix.lower() in IMAGE_SUFFIXES:
+            yield image_path
+
+
+def load_image_array(image_path):
+    with Image.open(image_path) as image:
+        image = image.convert('RGB').resize(IMAGE_SIZE, RESAMPLE)
+        return np.asarray(image, dtype=np.float32) / 255.0
+
+
+def main():
+    image_paths = list(iter_image_paths(DATA_DIR))
+    if not image_paths:
+        raise FileNotFoundError(f'没有在 {DATA_DIR} 找到图片')
+
+    pixel_count = 0
+    channel_sum = np.zeros(3, dtype=np.float64)
+    channel_squared_sum = np.zeros(3, dtype=np.float64)
+
+    for image_path in image_paths:
+        image_array = load_image_array(image_path)
+        pixels = image_array.shape[0] * image_array.shape[1]
+        pixel_count += pixels
+        channel_sum += image_array.sum(axis=(0, 1))
+        channel_squared_sum += (image_array ** 2).sum(axis=(0, 1))
+
+    mean = channel_sum / pixel_count
+    std = np.sqrt(channel_squared_sum / pixel_count - mean ** 2)
+
+    print('Image count:', len(image_paths))
+    print('Mean:', mean.tolist())
+    print('Std:', std.tolist())
+
+
+if __name__ == '__main__':
+    main()
