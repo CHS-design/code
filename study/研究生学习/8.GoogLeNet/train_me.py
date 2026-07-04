@@ -21,8 +21,12 @@ def train_val_data_process():
     # 数据集预处理方法
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
-        transforms.ToTensor()]
-        )
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.4879, 0.4545, 0.4167],
+            std=[0.2596, 0.2524, 0.2552]
+            )
+        ])
     
     # 加载训练集和验证集
     train_data = ImageFolder(ROOT_TRAIN_DATA,transform)
