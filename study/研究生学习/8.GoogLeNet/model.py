@@ -73,7 +73,7 @@ class GoogLeNet(nn.Module):
         super(GoogLeNet, self).__init__()
         self.aux_logits = aux_logits
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=7, stride=2, padding=3),
+            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         )
@@ -140,4 +140,4 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GoogLeNet(Inception).to(device)
     model.eval()
-    summary(model, (1, 224, 224), device=device.type)
+    summary(model, (3, 224, 224), device=device.type)
