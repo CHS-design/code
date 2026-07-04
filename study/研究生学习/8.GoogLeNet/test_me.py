@@ -6,6 +6,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
 from model import GoogLeNet, Inception
+from PIL import Image
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -67,4 +68,27 @@ if __name__ == "__main__":
 
     test_dataloader, class_to_idx = test_data_process()
     print("类别映射：", class_to_idx)
-    test_model_process(model, test_dataloader)
+    # test_model_process(model, test_dataloader)
+
+    image = Image.open(os.path.join(BASE_DIR, '狗1.jpg'))
+    # image.show()
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.4879, 0.4545, 0.4167],
+            std=[0.2596, 0.2524, 0.2552]
+        )
+    ])
+    image = transform(image)
+    #添加批次维度来适应模型输入
+    image = image.unsqueeze(0)
+
+    with torch.no_grad():
+        model.eval()
+        output = model(image)
+        pre_lab = torch.argmax(output, dim=1)
+        print("预测结果：", CLASSES[pre_lab])
+
+
+
