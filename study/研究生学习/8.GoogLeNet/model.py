@@ -69,7 +69,7 @@ class AuxClassifier(nn.Module):
         return self.net(x)
     
 class GoogLeNet(nn.Module):
-    def __init__(self, Inception, num_classes=10, aux_logits=True):
+    def __init__(self, Inception, num_classes=2, aux_logits=True):
         super(GoogLeNet, self).__init__()
         self.aux_logits = aux_logits
         self.conv1 = nn.Sequential(
