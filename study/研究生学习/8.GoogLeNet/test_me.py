@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     test_dataloader, class_to_idx = test_data_process()
     print("类别映射：", class_to_idx)
-    # test_model_process(model, test_dataloader)
+    test_model_process(model, test_dataloader)
 
     image = Image.open(os.path.join(BASE_DIR, '狗1.jpg'))
     # image.show()
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     ])
     image = transform(image)
     #添加批次维度来适应模型输入
-    image = image.unsqueeze(0)
+    image = image.unsqueeze(0).to('cuda')
 
     with torch.no_grad():
         model.eval()
