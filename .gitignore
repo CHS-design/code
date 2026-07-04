@@ -33,6 +33,7 @@ _build/
 # Machine learning data, checkpoints, and generated artifacts
 data/
 **/data/
+data_me/
 *.pth
 *.pt
 *.ckpt
