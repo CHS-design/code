@@ -1,5 +1,5 @@
 import os
-from shutil import copy
+from shutil import copy # shutil 模块对文件进行复制、删除、移动等操作
 import random
 
 
