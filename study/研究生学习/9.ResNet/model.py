@@ -49,7 +49,7 @@ class ResNet(nn.Module):
             Residual(512, 512),
         )
         self.fc = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
+            nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
             nn.Linear(512, 10)
         )
@@ -61,3 +61,8 @@ class ResNet(nn.Module):
         X = self.block5(X)
         X = self.fc(X)
         return X
+    
+if __name__ == '__main__':
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = ResNet(Residual).to(device)
+    summary(model, (1, 224, 224))
