@@ -53,3 +53,11 @@ class ResNet(nn.Module):
             nn.Flatten(),
             nn.Linear(512, 10)
         )
+    def forward(self, X):
+        X = self.block1(X)
+        X = self.block2(X)
+        X = self.block3(X)
+        X = self.block4(X)
+        X = self.block5(X)
+        X = self.fc(X)
+        return X
