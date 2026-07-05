@@ -27,7 +27,7 @@ class ResNet(nn.Module):
     def __init__(self, Residual):
         super(ResNet, self).__init__()
         self.block1 = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3),
+            nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
             nn.ReLU(),
             nn.BatchNorm2d(64),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -65,4 +65,4 @@ class ResNet(nn.Module):
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ResNet(Residual).to(device)
-    summary(model, (1, 224, 224))
+    summary(model, (3, 224, 224))
