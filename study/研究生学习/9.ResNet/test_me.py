@@ -114,6 +114,6 @@ if __name__ == "__main__":
 
     sample_image_path = os.path.join(BASE_DIR, '狗1.jpg')
     if not os.path.exists(sample_image_path) and test_data.samples:
-        sample_image_path = test_data.samples[0][0]
+        sample_image_path = test_data.samples[2][0]
     if os.path.exists(sample_image_path):
         predict_image(model, sample_image_path, class_to_idx)
