@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: ""
+title: Git 忽略规则
+scope:
+    - .gitignore
+source_files: []
+depends_on: []
+related_to: []

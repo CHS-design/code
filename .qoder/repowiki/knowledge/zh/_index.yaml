@@ -1,0 +1,16 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-07-07T15:04:32Z"
+modules:
+    "":
+        dir_name: Git 忽略规则
+        title: Git 忽略规则
+        scope:
+            - .gitignore
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
