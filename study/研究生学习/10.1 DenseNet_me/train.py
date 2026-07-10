@@ -205,12 +205,17 @@ def train_model_process(model, train_dataloader, validation_dataloader, num_epoc
             "本轮耗时（秒）": epoch_elapsed_time,
             "累计耗时（秒）": total_elapsed_time,
         })
+
+        # 用空行和横线分隔相邻轮次的日志，便于在长时间训练中查阅指定轮次。
+        separator = "=" * 72
         print(
+            f"\n{separator}\n"
             f"第 {epoch + 1:03d}/{num_epochs} 轮 ，学习率：{current_lr:.4g}\n"
             f"训练损失：{train_loss:.4f} ，训练准确率：{train_acc:.4f}\n"
             f"验证损失：{validation_loss:.4f} ，验证准确率：{validation_acc:.4f}\n"
             f"本轮用时：{format_elapsed_time(epoch_elapsed_time)} ，"
-            f"累计用时：{format_elapsed_time(total_elapsed_time)}"
+            f"累计用时：{format_elapsed_time(total_elapsed_time)}\n"
+            f"{separator}"
         )
 
         if validation_acc > best_validation_acc:
