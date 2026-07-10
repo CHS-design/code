@@ -187,18 +187,3 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), model_path)
     train_process.to_csv(history_path, index=False)
     matplot_acc_loss(train_process, figure_path)
- 加载数据集
-    train_data, val_data = train_val_data_process()
-    # 利用现有的模型进行模型的训练
-    train_process = train_model_process(model, train_data, val_data, num_epochs=50)
-    matplot_acc_loss(train_process)
- 加载数据集
-    train_data, val_data = train_val_data_process()
-    # 利用现有的模型进行模型的训练
-    train_process = train_model_process(model, train_data, val_data, num_epochs=50)
-    matplot_acc_loss(train_process)
- 加载数据集
-    train_data, val_data = train_val_data_process()
-    # 利用现有的模型进行模型的训练
-    train_process = train_model_process(model, train_data, val_data, num_epochs=50)
-    matplot_acc_loss(train_process)
