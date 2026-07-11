@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>交叉熵损失速查卡</title>
+  <style>
+    :root { color-scheme: light; font-family: "Microsoft YaHei", system-ui, sans-serif; color: #17212b; background: #f7f9fb; }
+    body { margin: 0; padding: 32px 20px; }
+    main { max-width: 780px; margin: auto; background: #fff; border: 1px solid #d9e0e6; padding: 32px; }
+    h1, h2 { margin: 0 0 14px; color: #102a43; }
+    h1 { font-size: 28px; } h2 { font-size: 19px; margin-top: 28px; }
+    p, li { line-height: 1.7; } code, .formula { font-family: Consolas, "Courier New", monospace; background: #eef3f7; padding: 2px 5px; }
+    .formula { display: block; padding: 14px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid #d9e0e6; } th { background: #f1f5f8; }
+    .warn { border-left: 4px solid #d97706; background: #fff8eb; padding: 12px 14px; }
+    a { color: #075985; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>交叉熵损失速查卡</h1>
+    <p>核心记忆：<strong>交叉熵就是取出真实类别的预测概率，再取负对数。</strong></p>
+
+    <h2>公式</h2>
+    <span class="formula">L = -Σ<sub>i=1</sub><sup>C</sup> y<sub>i</sub> log(p<sub>i</sub>) = -log(p<sub>t</sub>)</span>
+    <p><code>C</code> 是类别数；<code>y_i</code> 是 one-hot 真实标签；<code>p_i</code> 是模型对第 <code>i</code> 类的概率；<code>t</code> 是真实类别编号。</p>
+
+    <h2>二分类</h2>
+    <span class="formula">L = -[y log(p) + (1-y) log(1-p)]</span>
+    <p><code>y=1</code> 时，损失是 <code>-log(p)</code>；<code>y=0</code> 时，损失是 <code>-log(1-p)</code>。</p>
+
+    <h2>为什么重罚“自信地错”</h2>
+    <table>
+      <thead><tr><th>真实类概率 p_t</th><th>损失 -log(p_t)</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td>0.9</td><td>约 0.105</td><td>预测对且有信心</td></tr>
+        <tr><td>0.5</td><td>约 0.693</td><td>不确定</td></tr>
+        <tr><td>0.01</td><td>约 4.605</td><td>几乎肯定地预测错</td></tr>
+      </tbody>
+    </table>
+
+    <h2>PyTorch</h2>
+    <span class="formula">loss = torch.nn.CrossEntropyLoss()(logits, targets)</span>
+    <table>
+      <thead><tr><th>参数</th><th>形状与类型</th><th>注意</th></tr></thead>
+      <tbody>
+        <tr><td><code>logits</code></td><td><code>[N, C]</code>，浮点数</td><td>原始分数，不要先做 <code>softmax</code></td></tr>
+        <tr><td><code>targets</code></td><td><code>[N]</code>，<code>torch.long</code></td><td>类别编号，例如 <code>[2, 0, 1]</code></td></tr>
+      </tbody>
+    </table>
+    <p class="warn"><strong>常见错误：</strong><code>CrossEntropyLoss</code> 内部已经包含 softmax 与 log；不要写 <code>CrossEntropyLoss()(softmax(logits), targets)</code>。</p>
+    <p>延伸学习：<a href="../lessons/0001-cross-entropy-from-formula-to-pytorch.html">从公式到 PyTorch 的短课</a>；语义分割请看 <a href="0002-pixel-wise-cross-entropy-cheatsheet.html">像素级交叉熵速查卡</a>。</p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>像素级交叉熵速查卡</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #17212b; background: #f7f9fb; }
+    body { margin: 0; padding: 32px 20px; } main { max-width: 800px; margin: auto; background: #fff; border: 1px solid #d9e0e6; padding: 32px; }
+    h1, h2 { color: #102a43; } h1 { margin-top: 0; font-size: 28px; } h2 { margin-top: 28px; font-size: 19px; }
+    p, li { line-height: 1.7; } .formula, pre { font-family: Consolas, "Courier New", monospace; background: #eef3f7; padding: 13px; overflow-x: auto; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; } th, td { padding: 10px; border-bottom: 1px solid #d9e0e6; text-align: left; vertical-align: top; } th { background: #f1f5f8; }
+    .warn { border-left: 4px solid #d97706; background: #fff8eb; padding: 12px 14px; } a { color: #075985; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>像素级交叉熵速查卡</h1>
+    <p><strong>一句话：</strong>把图像中每个像素都当成一次 C 类分类，计算损失后再对有效像素求平均。</p>
+
+    <h2>多分类语义分割公式</h2>
+    <div class="formula">L = -1/M · Σ(n,h,w) log p[n, y[n,h,w], h, w]</div>
+    <p><code>n</code> 是批内图像，<code>h,w</code> 是像素位置，<code>y[n,h,w]</code> 是该像素的真实类别编号，<code>M</code> 是参与计算的像素总数。</p>
+
+    <h2>PyTorch 的形状</h2>
+    <table>
+      <thead><tr><th>张量</th><th>形状</th><th>类型与含义</th></tr></thead>
+      <tbody>
+        <tr><td><code>logits</code></td><td><code>[N, C, H, W]</code></td><td>float；每个像素对 C 个类别的原始分数</td></tr>
+        <tr><td><code>mask</code></td><td><code>[N, H, W]</code></td><td>long；每个像素的类别编号，如 0、1、2</td></tr>
+        <tr><td><code>prediction</code></td><td><code>[N, H, W]</code></td><td><code>logits.argmax(dim=1)</code> 得到的预测类别图</td></tr>
+      </tbody>
+    </table>
+
+    <h2>多分类写法</h2>
+    <pre>criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+loss = criterion(logits, mask)  # logits: [N,C,H,W], mask: [N,H,W]</pre>
+    <p class="warn"><strong>不要</strong>先对 <code>logits</code> 做 <code>softmax</code>；<code>CrossEntropyLoss</code> 会在类别维 <code>C</code> 上内部完成这一步。<code>255</code> 是常用的忽略标签示例，必须与你的数据集约定一致。</p>
+    <p><strong>one-hot 说明：</strong>普通硬标签不需要转 one-hot：<code>[N,H,W]</code> 的整数类别图即可。one-hot 会变成 <code>[N,C,H,W]</code>，只在 soft label 或类别概率标签等场景使用。</p>
+
+    <h2>二分类不是 C=1 的 CrossEntropyLoss</h2>
+    <pre>criterion = torch.nn.BCEWithLogitsLoss()
+loss = criterion(logits, mask.float())
+# logits 与 mask 的形状通常都是 [N,1,H,W]</pre>
+    <p>只有一个输出通道时，softmax 恒为 1，不能区分前景与背景。二分类应使用 <code>BCEWithLogitsLoss</code>。</p>
+
+    <p>相关内容：<a href="0001-cross-entropy-cheatsheet.html">普通交叉熵速查卡</a>，<a href="../lessons/0002-pixel-wise-cross-entropy.html">像素级短课</a>。</p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>像素级交叉熵：语义分割中的公式与 PyTorch</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #152536; background: #f4f7f9; }
+    body { margin: 0; padding: 32px 18px; } main { max-width: 830px; margin: auto; background: #fff; border: 1px solid #d6dfe7; padding: 34px; }
+    h1 { color: #102a43; margin: 0; font-size: 30px; } h2 { color: #102a43; margin-top: 32px; font-size: 21px; }
+    p, li { line-height: 1.75; } .lead { color: #486581; } .formula, pre { font-family: Consolas, "Courier New", monospace; background: #eef3f7; padding: 14px; overflow-x: auto; line-height: 1.6; }
+    .step { border-left: 4px solid #0f766e; padding: 2px 0 2px 16px; margin: 22px 0; } .example { background: #f6f9fb; border: 1px solid #d6dfe7; padding: 16px; }
+    .quiz { border: 1px solid #a8c4d4; background: #f0f8fc; padding: 18px; } button { background: #075985; color: #fff; border: 0; padding: 9px 14px; font: inherit; cursor: pointer; } #answer { margin-top: 12px; min-height: 24px; font-weight: 600; } a { color: #075985; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>像素级交叉熵：语义分割中的公式与 PyTorch</h1>
+    <p class="lead">目标：看懂 <code>[N,C,H,W]</code> 与 <code>[N,H,W]</code>，并把普通交叉熵推广到整张分割掩码。</p>
+
+    <h2>1. 一个像素就是一个分类样本</h2>
+    <p>普通三分类时，一张图片只得到一个类别。语义分割时，一张 <code>H×W</code> 图像会得到 <code>H×W</code> 个类别：每个像素都要判断它是背景、道路、车辆或其他类别。</p>
+    <div class="step"><strong>关键变化：</strong>分类对象从“一张图”变成“图中的每一个像素”；每个像素的损失仍是 <code>-log(真实类概率)</code>。</div>
+
+    <h2>2. 公式只是多加了像素下标</h2>
+    <div class="formula">L[n,h,w] = -log p[n, y[n,h,w], h, w]
+L = 1/M · Σ(n,h,w) L[n,h,w]</div>
+    <p>模型在每个像素位置输出 C 个 logits，经过 softmax 后得到 C 类概率。训练时，通常对所有未忽略像素求平均。</p>
+
+    <h2>3. 把维度对齐</h2>
+    <pre>images  : [N, 3, H, W]
+logits  : [N, C, H, W]  # 模型输出，未做 softmax
+mask    : [N, H, W]     # 真实类别编号，dtype=torch.long
+
+loss = torch.nn.CrossEntropyLoss()(logits, mask)</pre>
+    <div class="example"><strong>例：</strong><code>N=2, C=4, H=W=256</code> 时，模型为每张图的 65,536 个像素各输出 4 个分类分数；标签只需在每个像素放一个数字 0 到 3。</div>
+
+    <h2>4. one-hot mask 到底是什么</h2>
+    <p>假设一张 2×2 图像有 3 类，原始标签图是 <code>[[0, 2], [1, 0]]</code>，形状为 <code>[H,W]=[2,2]</code>。这表示左上像素是第 0 类、右上是第 2 类。</p>
+    <pre>类别编号 mask:                 one-hot mask 的 3 个通道:
+[[0, 2],                       第 0 类: [[1, 0], [0, 1]]
+ [1, 0]]                       第 1 类: [[0, 0], [1, 0]]
+                               第 2 类: [[0, 1], [0, 0]]</pre>
+    <p>one-hot 后，原先每个像素的一个整数，变成每个像素的 3 个 0/1 数字，形状从 <code>[N,H,W]</code> 变为 <code>[N,C,H,W]</code>。</p>
+    <div class="step"><strong>默认硬标签训练：</strong><code>CrossEntropyLoss(logits, mask)</code> 需要的是左边的类别编号图，因而不用手动转 one-hot。它会按每个整数标签取出对应类别的损失。</div>
+
+    <h2>5. 最常见的两个错误</h2>
+    <ol>
+      <li><strong>先做 softmax：</strong><code>CrossEntropyLoss</code> 已经在内部完成，直接传 logits。</li>
+      <li><strong>无必要地把 mask 做成 one-hot：</strong>普通硬标签用 <code>[N,H,W]</code> 的整数类别图即可；转 one-hot 会多占 C 倍左右的标签内存，也更容易出现维度或类型错误。</li>
+    </ol>
+
+    <p>例外是标签本身就是“软标签”，例如 label smoothing 或类别概率图；这时才会传入形状为 <code>[N,C,H,W]</code> 的浮点目标。它不是普通分割标注的默认形式。</p>
+
+    <h2>6. 二分类分割要换损失</h2>
+    <pre>logits = model(images)           # [N, 1, H, W]
+mask = mask.float()              # [N, 1, H, W]，值为 0 或 1
+loss = torch.nn.BCEWithLogitsLoss()(logits, mask)</pre>
+    <p>二分类只有“前景/背景”时，使用 <code>BCEWithLogitsLoss</code>。不要用通道数为 1 的 <code>CrossEntropyLoss</code>。</p>
+
+    <h2>7. 30 秒自检</h2>
+    <div class="quiz">
+      <p>四类语义分割中，模型输出是 <code>[8,4,128,128]</code>。默认的 <code>CrossEntropyLoss</code> 标签应是什么形状与类型？</p>
+      <button type="button" onclick="showAnswer()">查看答案</button>
+      <div id="answer" aria-live="polite"></div>
+    </div>
+
+    <p>继续复习：<a href="../reference/0002-pixel-wise-cross-entropy-cheatsheet.html">像素级速查卡</a>，<a href="0001-cross-entropy-from-formula-to-pytorch.html">普通交叉熵短课</a>。对数据集标签值或维度报错不确定时，直接把形状和报错贴给我。</p>
+    <p>主要资料：<a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html">PyTorch CrossEntropyLoss 文档</a>；<a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html">PyTorch BCEWithLogitsLoss 文档</a>。</p>
+  </main>
+  <script>
+    function showAnswer() {
+      document.getElementById('answer').textContent = '标签应为 [8,128,128]，类型为 torch.long；每个位置的值是 0 到 3 的真实类别编号。';
+    }
+  </script>
+</body>
+</html>

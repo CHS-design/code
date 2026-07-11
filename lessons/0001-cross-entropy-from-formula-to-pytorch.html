@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>从公式到 PyTorch：交叉熵损失</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #152536; background: #f4f7f9; }
+    body { margin: 0; padding: 32px 18px; }
+    main { max-width: 820px; margin: auto; background: #fff; border: 1px solid #d6dfe7; padding: 34px; }
+    h1 { color: #102a43; margin: 0; font-size: 30px; } h2 { color: #102a43; margin-top: 32px; font-size: 21px; }
+    p, li { line-height: 1.75; } .lead { color: #486581; }
+    .formula, pre { font-family: Consolas, "Courier New", monospace; background: #eef3f7; padding: 14px; overflow-x: auto; line-height: 1.6; }
+    .step { border-left: 4px solid #0f766e; padding: 2px 0 2px 16px; margin: 22px 0; }
+    .example { background: #f6f9fb; border: 1px solid #d6dfe7; padding: 16px; }
+    .quiz { border: 1px solid #a8c4d4; background: #f0f8fc; padding: 18px; } button { background: #075985; color: white; border: 0; padding: 9px 14px; font: inherit; cursor: pointer; } #answer { margin-top: 12px; min-height: 24px; font-weight: 600; }
+    a { color: #075985; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>从公式到 PyTorch：交叉熵损失</h1>
+    <p class="lead">目标：会写公式、会算一个样本的损失，并能避免 PyTorch 中最常见的 softmax 错误。</p>
+
+    <h2>1. 先只看真实类别</h2>
+    <p>三分类模型给一张图片的预测概率是：</p>
+    <div class="formula">p = [0.10, 0.70, 0.20]</div>
+    <p>若真实类别是第 2 类（编号为 1），我们只关心它对应的概率 <code>p_t = 0.70</code>。这次预测的损失是：</p>
+    <div class="formula">L = -log(p_t) = -log(0.70) ≈ 0.357</div>
+
+    <div class="step">
+      <strong>直觉：</strong>真实类别概率接近 1 时，<code>-log(p_t)</code> 接近 0；真实类别概率接近 0 时，损失急剧增大。因此，模型若非常自信地预测错，会受到很大惩罚。
+    </div>
+
+    <h2>2. 从 one-hot 形式看公式</h2>
+    <p>第 2 类的 one-hot 标签为 <code>y = [0, 1, 0]</code>。通用多分类公式是：</p>
+    <div class="formula">L = -Σ y_i log(p_i)</div>
+    <p>代入后，标签中为 0 的项全部消失：</p>
+    <div class="formula">L = -[0·log(0.10) + 1·log(0.70) + 0·log(0.20)] = -log(0.70)</div>
+    <p>所以考试中常把多分类交叉熵直接写为 <code>-log(p_t)</code>。</p>
+
+    <h2>3. 二分类是同一个思路</h2>
+    <div class="formula">L = -[y log(p) + (1-y) log(1-p)]</div>
+    <ul>
+      <li>真实标签 <code>y=1</code>：只剩 <code>-log(p)</code>。</li>
+      <li>真实标签 <code>y=0</code>：只剩 <code>-log(1-p)</code>。</li>
+    </ul>
+
+    <h2>4. 对应 PyTorch 代码</h2>
+    <pre>import torch
+import torch.nn as nn
+
+logits = torch.tensor([[1.2, 2.1, 0.4],
+                       [0.3, 0.1, 1.7]])  # [批大小 N, 类别数 C]
+targets = torch.tensor([1, 2])             # 每个样本的真实类别编号
+
+loss = nn.CrossEntropyLoss()(logits, targets)</pre>
+    <div class="example">
+      <strong>关键对应：</strong>代码中的 <code>logits</code> 还不是概率；<code>CrossEntropyLoss</code> 内部会执行数值稳定的 softmax 和取对数。<strong>不要先手动调用 <code>softmax</code></strong>。<code>targets</code> 用类别编号，而不是 one-hot 向量。
+    </div>
+
+    <h2>5. 30 秒自检</h2>
+    <div class="quiz">
+      <p>真实类别的预测概率分别是 0.8 与 0.2。哪一个样本的交叉熵损失更大？</p>
+      <button type="button" onclick="showAnswer()">查看答案</button>
+      <div id="answer" aria-live="polite"></div>
+    </div>
+
+    <h2>下一步</h2>
+    <p>回忆一句话：<strong>交叉熵 = 真实类概率的负对数。</strong>然后可查看 <a href="../reference/0001-cross-entropy-cheatsheet.html">速查卡</a>，或继续学习 <a href="0002-pixel-wise-cross-entropy.html">像素级交叉熵</a>。有任何符号或代码细节不清楚，直接继续问我。</p>
+    <p>主要资料：<a href="https://cs231n.github.io/linear-classify/">Stanford CS231n</a>；<a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html">PyTorch CrossEntropyLoss 文档</a>。</p>
+  </main>
+  <script>
+    function showAnswer() {
+      document.getElementById('answer').textContent = '0.2 的损失更大：-log(0.2) 约为 1.609，而 -log(0.8) 约为 0.223。';
+    }
+  </script>
+</body>
+</html>
