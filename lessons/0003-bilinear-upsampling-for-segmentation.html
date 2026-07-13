@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>双线性插值：把分割 logits 放大回像素图</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #17212b; background: #f3f7f9; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 16px 48px; }
+    main { max-width: 960px; margin: 0 auto; }
+    .eyebrow { color: #0f766e; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    h1, h2, h3 { color: #102a43; letter-spacing: 0; }
+    h1 { margin: 0; font-size: 32px; line-height: 1.25; }
+    h2 { margin: 0 0 14px; font-size: 22px; }
+    h3 { margin: 0 0 8px; font-size: 16px; }
+    p, li { line-height: 1.75; }
+    .lead { margin: 13px 0 24px; color: #486581; font-size: 17px; }
+    .panel { background: #fff; border: 1px solid #d6e0e6; padding: 24px; margin: 18px 0; }
+    .notice { border-left: 4px solid #0f766e; background: #edf8f5; padding: 13px 16px; line-height: 1.65; }
+    .warning { border-left-color: #c2410c; background: #fff7ed; }
+    .formula, pre { background: #eef3f7; padding: 14px; overflow-x: auto; font-family: Consolas, "Courier New", monospace; font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
+    .interactive { border: 2px solid #0f766e; background: #f9fdfc; }
+    .interactive > p { margin-top: 0; }
+    .upsample-scene { display: grid; grid-template-columns: minmax(150px, 1fr) 60px minmax(220px, 1.25fr); gap: 16px; align-items: center; margin: 20px 0 14px; }
+    .grid-title { margin: 0 0 8px; color: #334e68; font-size: 14px; font-weight: 700; text-align: center; }
+    .source-demo { display: grid; grid-template-columns: repeat(2, 1fr); border: 2px solid #173f52; }
+    .source-cell { min-height: 86px; padding: 8px; display: grid; align-content: center; justify-items: center; border: 1px solid #fff; background: #e7eef2; color: #102a43; transition: background 160ms ease, box-shadow 160ms ease; }
+    .source-cell.is-active { background: #bfe7df; box-shadow: inset 0 0 0 3px #0f766e; }
+    .source-value { font-family: Consolas, "Courier New", monospace; font-size: 26px; font-weight: 700; }
+    .source-weight { min-height: 19px; margin-top: 5px; color: #215c59; font-size: 12px; font-weight: 700; }
+    .arrow-stage { display: grid; justify-items: center; gap: 5px; color: #0f766e; text-align: center; }
+    .arrow-stage strong { font-size: 31px; line-height: 1; }
+    .arrow-stage span { color: #486581; font-size: 12px; line-height: 1.3; }
+    .target-demo { display: grid; grid-template-columns: repeat(4, minmax(38px, 1fr)); border: 2px solid #173f52; }
+    .target-cell { min-height: 54px; aspect-ratio: 1; border: 1px solid #fff; background: #edf3f6; color: #102a43; font-family: Consolas, "Courier New", monospace; font-size: 16px; font-weight: 700; text-align: center; padding: 0; cursor: pointer; transition: background 160ms ease, outline 160ms ease; }
+    .target-cell:hover, .target-cell:focus-visible { background: #d7eeea; outline: 2px solid #0f766e; outline-offset: -3px; }
+    .target-cell.is-selected { background: #0f766e; color: #fff; outline: 3px solid #f59e0b; outline-offset: -4px; }
+    .demo-controls { display: flex; justify-content: center; margin: 14px 0 17px; }
+    .play-button { background: #075985; color: #fff; border-color: #075985; text-align: center; }
+    .play-button:hover, .play-button:focus-visible { background: #0c4a6e; }
+    .mapping { display: grid; grid-template-columns: minmax(155px, .8fr) minmax(220px, 1.4fr); gap: 12px; border-top: 1px solid #c9d8df; padding-top: 16px; }
+    .mapping-key { background: #eaf4f2; padding: 13px; color: #174f4b; font-family: Consolas, "Courier New", monospace; font-weight: 700; line-height: 1.6; }
+    .mapping-detail { background: #eef3f7; padding: 13px; font-family: Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.75; }
+    .explorer { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(270px, 1.1fr); gap: 28px; align-items: start; }
+    .grid-wrap { width: min(100%, 370px); margin: 0 auto; position: relative; }
+    .pixel-grid { position: relative; aspect-ratio: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; border: 2px solid #173f52; overflow: hidden; background: #dcecf0; }
+    .pixel { display: grid; place-items: center; border: 1px solid #fff; color: #102a43; font-size: 17px; font-weight: 700; position: relative; }
+    .pixel span { display: block; font-size: 12px; font-weight: 600; color: #486581; margin-bottom: 5px; }
+    .p00 { background: #c7e9e0; } .p01 { background: #b8d8ee; } .p10 { background: #f8d7b6; } .p11 { background: #f4be9c; }
+    .marker { position: absolute; width: 19px; height: 19px; border: 3px solid #17212b; background: #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 2; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); pointer-events: none; }
+    .marker-label { position: absolute; z-index: 3; transform: translate(11px, -25px); background: #17212b; color: #fff; padding: 3px 6px; font-size: 12px; white-space: nowrap; pointer-events: none; }
+    .axis-x { text-align: center; color: #486581; font-size: 13px; margin-top: 7px; }
+    .axis-y { color: #486581; font-size: 13px; writing-mode: vertical-rl; position: absolute; margin-left: -20px; top: 43%; }
+    .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 21px; }
+    label { display: block; color: #334e68; font-size: 14px; font-weight: 700; }
+    input[type="number"] { width: 100%; margin-top: 5px; padding: 8px; border: 1px solid #a8bdc8; background: #fff; color: #102a43; font: inherit; }
+    input[type="range"] { width: 100%; accent-color: #0f766e; }
+    .range-row { display: grid; grid-template-columns: 54px 1fr 48px; gap: 10px; align-items: center; margin: 13px 0; }
+    .range-row output { color: #0f5f59; font-variant-numeric: tabular-nums; font-weight: 700; }
+    .weights { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+    .weight { border: 1px solid #c9d8df; background: #fff; padding: 9px 10px; color: #486581; font-size: 13px; }
+    .weight strong { display: block; color: #102a43; font-size: 17px; margin-top: 2px; }
+    .result { border-top: 1px solid #c9d8df; margin-top: 18px; padding-top: 16px; display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+    .result strong { color: #0f766e; font-family: Consolas, "Courier New", monospace; font-size: 25px; }
+    .steps { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .step { border-top: 3px solid #0f766e; background: #f7fafb; padding: 15px; }
+    .step p { margin: 0; font-size: 14px; }
+    .comparison { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #d6e0e6; }
+    .comparison > div { padding: 16px; border-right: 1px solid #d6e0e6; }
+    .comparison > div:last-child { border-right: 0; }
+    .ok { color: #0f766e; font-weight: 700; } .bad { color: #c2410c; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #d6e0e6; vertical-align: top; }
+    th { background: #eef5f7; color: #102a43; }
+    .quiz { border: 1px solid #a8c4d4; background: #f0f8fc; padding: 18px; }
+    .choices { display: grid; gap: 8px; margin: 12px 0; }
+    button { border: 1px solid #075985; background: #fff; color: #075985; padding: 9px 12px; text-align: left; font: inherit; cursor: pointer; }
+    button:hover, button:focus-visible { background: #e6f4fb; outline: 2px solid #0f766e; outline-offset: 2px; }
+    #feedback { min-height: 25px; margin: 12px 0 0; font-weight: 700; }
+    a { color: #075985; }
+    @media (max-width: 680px) { body { padding: 18px 12px 32px; } .panel { padding: 18px; } h1 { font-size: 27px; } .explorer, .steps, .upsample-scene, .mapping { grid-template-columns: 1fr; } .arrow-stage { grid-auto-flow: column; grid-template-columns: auto auto; align-items: center; } .arrow-stage strong { transform: rotate(90deg); } .comparison { grid-template-columns: 1fr; } .comparison > div { border-right: 0; border-bottom: 1px solid #d6e0e6; } .comparison > div:last-child { border-bottom: 0; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">语义分割第 3 课</div>
+    <h1>双线性插值：把分割 logits 放大回像素图</h1>
+    <p class="lead">目标：理解一个新像素如何从四个邻点得到数值，并知道在语义分割里什么该用 <code>bilinear</code>、什么必须用 <code>nearest</code>。</p>
+
+    <section class="panel">
+      <h2>1. 它在分割网络的哪一步？</h2>
+      <pre>输入图像                 解码器输出 logits             上采样后 logits            最终类别图
+[N, 3, 512, 512]  ->  [N, C, 128, 128]  ->  [N, C, 512, 512]  ->  argmax(dim=1)</pre>
+      <p>网络常在较小的空间分辨率上计算，以减少成本。每个位置的 <code>C</code> 个 logits 是连续分数，因此可以平滑地估计中间位置的值。双线性插值就是这一估计方式。</p>
+      <div class="notice"><strong>先记住这一条：</strong>对 <strong>logits、概率图、特征图</strong>使用双线性插值；对真实标签 <strong>mask</strong> 使用最近邻插值。</div>
+    </section>
+
+    <section class="panel interactive">
+      <h2>2. 看见 2×2 怎样生成 4×4</h2>
+      <p>左边是一个类别通道的低分辨率 logits，右边是上采样后的 logits。点击右侧任意格子：它会反查左侧的坐标，显示这一个新数值是怎样算出的。</p>
+      <div class="upsample-scene">
+        <div>
+          <p class="grid-title">输入 logits（2×2）</p>
+          <div class="source-demo" id="sourceDemo" aria-label="2乘2 输入 logits">
+            <div class="source-cell" data-source="0"><span class="source-value">0</span><span class="source-weight"></span></div>
+            <div class="source-cell" data-source="1"><span class="source-value">12</span><span class="source-weight"></span></div>
+            <div class="source-cell" data-source="2"><span class="source-value">6</span><span class="source-weight"></span></div>
+            <div class="source-cell" data-source="3"><span class="source-value">18</span><span class="source-weight"></span></div>
+          </div>
+        </div>
+        <div class="arrow-stage" aria-hidden="true"><strong>→</strong><span>逐个新像素<br>回查坐标</span></div>
+        <div>
+          <p class="grid-title">上采样结果（4×4）</p>
+          <div class="target-demo" id="targetDemo" aria-label="4乘4 上采样结果；点击一个格子查看计算过程"></div>
+        </div>
+      </div>
+      <div class="demo-controls"><button class="play-button" id="playGrid" type="button">播放逐格生成</button></div>
+      <div class="mapping">
+        <div class="mapping-key" id="mappingKey">输出格 (行 2，列 2)<br>↓<br>输入坐标 x=1/3，y=1/3</div>
+        <div class="mapping-detail" id="mappingDetail">先在上边算：4<br>再在下边算：10<br>最后在两者之间算：6</div>
+      </div>
+      <p class="notice">这个小演示为了让坐标恰好落在 <code>0、1/3、2/3、1</code>，采用了 <code>align_corners=True</code> 的直观坐标。真实代码里常用 <code>align_corners=False</code>，坐标位置稍有不同，但“反查位置 → 四邻点按距离加权”这件事不变。</p>
+    </section>
+
+    <section class="panel interactive">
+      <h2>3. 亲手移动一个采样点</h2>
+      <p>小方格四角是同一类别通道上的四个 logits。移动点 P，或者改四个角的数值，观察 P 的值怎样变化。</p>
+      <div class="explorer">
+        <div class="grid-wrap">
+          <div class="pixel-grid" id="pixelGrid" aria-label="四个邻点和采样点 P">
+            <div class="pixel p00"><div><span>F00 左上</span><b id="cell00">1</b></div></div>
+            <div class="pixel p01"><div><span>F01 右上</span><b id="cell01">3</b></div></div>
+            <div class="pixel p10"><div><span>F10 左下</span><b id="cell10">5</b></div></div>
+            <div class="pixel p11"><div><span>F11 右下</span><b id="cell11">9</b></div></div>
+            <div class="marker" id="marker"></div><div class="marker-label" id="markerLabel">P</div>
+          </div>
+          <div class="axis-y">向下 y</div><div class="axis-x">向右 x</div>
+        </div>
+        <div>
+          <div class="inputs">
+            <label>F00 左上<input id="f00" type="number" value="1" step="1"></label>
+            <label>F01 右上<input id="f01" type="number" value="3" step="1"></label>
+            <label>F10 左下<input id="f10" type="number" value="5" step="1"></label>
+            <label>F11 右下<input id="f11" type="number" value="9" step="1"></label>
+          </div>
+          <div class="range-row"><label for="x">x</label><input id="x" type="range" min="0" max="1" step="0.01" value="0.25"><output id="xOut">0.25</output></div>
+          <div class="range-row"><label for="y">y</label><input id="y" type="range" min="0" max="1" step="0.01" value="0.60"><output id="yOut">0.60</output></div>
+          <div class="weights">
+            <div class="weight">左上 <code>(1-x)(1-y)</code><strong id="w00">0.30</strong></div>
+            <div class="weight">右上 <code>x(1-y)</code><strong id="w01">0.10</strong></div>
+            <div class="weight">左下 <code>(1-x)y</code><strong id="w10">0.45</strong></div>
+            <div class="weight">右下 <code>xy</code><strong id="w11">0.15</strong></div>
+          </div>
+          <div class="result"><span>P 的双线性插值结果</span><strong id="result">4.20</strong></div>
+        </div>
+      </div>
+      <div class="formula" id="workingFormula">P = 0.30*1 + 0.10*3 + 0.45*5 + 0.15*9 = 4.20</div>
+    </section>
+
+    <section class="panel">
+      <h2>4. 为什么叫“双线性”？</h2>
+      <div class="steps">
+        <div class="step"><h3>先横向</h3><p>在上边的 F00 和 F01 之间按 <code>x</code> 插一次；下边的 F10 和 F11 之间也插一次。</p></div>
+        <div class="step"><h3>再纵向</h3><p>在刚得到的“上方结果”和“下方结果”之间，按 <code>y</code> 再插一次。</p></div>
+        <div class="step"><h3>等价公式</h3><p><code>P=(1-x)(1-y)F00+x(1-y)F01+(1-x)yF10+xyF11</code></p></div>
+      </div>
+      <p>权重总和永远是 1。采样点离某个角越近，该角的权重越大；落在正中央时，四个角各占 0.25。</p>
+    </section>
+
+    <section class="panel">
+      <h2>5. 分割中该对谁插值？</h2>
+      <div class="comparison">
+        <div><h3>模型 logits</h3><p><code>[N,C,h,w]</code></p><p class="ok">用 bilinear</p><p>每个数字是连续分类分数，4.2 这样的中间结果有意义。</p></div>
+        <div><h3>预测类别图</h3><p><code>argmax(logits)</code></p><p class="ok">通常先放大 logits，再 argmax</p><p>让所有类别通道分别被平滑放大，再决定每个像素的最大类。</p></div>
+        <div><h3>真实标签 mask</h3><p><code>[N,H,W]</code>，值为 0、1、2...</p><p class="bad">只能用 nearest</p><p>类别编号是离散含义。0 和 2 之间的 1.3 并不代表一个真实类别。</p></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>6. PyTorch 的常用写法</h2>
+      <pre>import torch.nn.functional as F
+
+# 模型输出低分辨率 logits: [N, C, 128, 128]
+logits_small = model(images)
+
+# 预测或需要与原图大小对齐时：插值 logits，再分类
+logits = F.interpolate(
+    logits_small,
+    size=images.shape[-2:],
+    mode="bilinear",
+    align_corners=False,
+)
+pred = logits.argmax(dim=1)  # [N, H, W]
+
+# 若必须缩放真实类别标签：只用 nearest
+mask_small = F.interpolate(
+    mask.unsqueeze(1).float(),
+    size=logits_small.shape[-2:],
+    mode="nearest",
+).squeeze(1).long()</pre>
+      <div class="notice warning"><strong>训练时要先对齐尺寸：</strong><code>CrossEntropyLoss</code> 要求 <code>logits</code> 的空间尺寸和 <code>mask</code> 一致。可选择放大 logits，或把 mask 用最近邻缩小；具体取决于你的网络和损失计算位置。</div>
+      <h3>关于 <code>align_corners=False</code></h3>
+      <p>它规定缩放时像素坐标如何对齐。PyTorch 的双线性插值通常显式写成 <code>False</code>；更重要的是训练、验证、推理都要保持同一设置。不要在不同阶段混用，否则边界位置可能有细小偏移。</p>
+    </section>
+
+    <section class="panel quiz">
+      <h2>7. 30 秒判断</h2>
+      <p>有一张四类分割标签图，像素值只有 0、1、2、3。要从 <code>128×128</code> 缩放到 <code>512×512</code>，哪一种做法正确？</p>
+      <div class="choices">
+        <button type="button" data-answer="wrong">对标签图直接用 bilinear，因为边界会更平滑。</button>
+        <button type="button" data-answer="right">对 logits 用 bilinear；若标签图必须缩放，则对标签用 nearest。</button>
+        <button type="button" data-answer="wrong">先对标签做 softmax，再用 bilinear。</button>
+      </div>
+      <div id="feedback" aria-live="polite"></div>
+    </section>
+
+    <p>相关内容：<a href="0002-pixel-wise-cross-entropy.html">像素级交叉熵短课</a>，<a href="../reference/0003-bilinear-segmentation-cheatsheet.html">双线性上采样速查卡</a>。你可以继续在对话里问“<code>align_corners</code> 到底差在哪里”或把自己的分割代码贴出来一起对照。</p>
+    <p>主要资料：<a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.interpolate.html">PyTorch <code>torch.nn.functional.interpolate</code> 官方文档</a>。</p>
+  </main>
+  <script>
+    const ids = ["f00", "f01", "f10", "f11"];
+    const cells = ["cell00", "cell01", "cell10", "cell11"];
+    const weights = ["w00", "w01", "w10", "w11"];
+    const format = value => Number.isFinite(value) ? value.toFixed(2) : "0.00";
+    const demoValues = [0, 12, 6, 18];
+    let demoTimer;
+
+    function compact(value) {
+      return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function coordinateLabel(index) {
+      return ["0", "1/3", "2/3", "1"][index];
+    }
+
+    function interpolationAt(x, y) {
+      const ws = [(1 - x) * (1 - y), x * (1 - y), (1 - x) * y, x * y];
+      const result = ws.reduce((sum, weight, index) => sum + weight * demoValues[index], 0);
+      return { ws, result };
+    }
+
+    function selectDemoCell(row, column) {
+      const x = column / 3;
+      const y = row / 3;
+      const { ws, result } = interpolationAt(x, y);
+      const top = (1 - x) * demoValues[0] + x * demoValues[1];
+      const bottom = (1 - x) * demoValues[2] + x * demoValues[3];
+
+      document.querySelectorAll(".target-cell").forEach(cell => {
+        const selected = Number(cell.dataset.row) === row && Number(cell.dataset.column) === column;
+        cell.classList.toggle("is-selected", selected);
+        cell.setAttribute("aria-pressed", String(selected));
+      });
+      document.querySelectorAll(".source-cell").forEach((cell, index) => {
+        const active = ws[index] > 0;
+        cell.classList.toggle("is-active", active);
+        cell.querySelector(".source-weight").textContent = active ? `权重 ${compact(ws[index] * 100)}%` : "";
+      });
+      document.getElementById("mappingKey").innerHTML = `输出格 (行 ${row + 1}，列 ${column + 1})<br>↓<br>输入坐标 x=${coordinateLabel(column)}，y=${coordinateLabel(row)}`;
+      document.getElementById("mappingDetail").innerHTML = `先在上边算：${compact(top)}<br>再在下边算：${compact(bottom)}<br>最后在两者之间算：${compact(result)}`;
+    }
+
+    function buildDemoGrid() {
+      const target = document.getElementById("targetDemo");
+      for (let row = 0; row < 4; row += 1) {
+        for (let column = 0; column < 4; column += 1) {
+          const button = document.createElement("button");
+          const { result } = interpolationAt(column / 3, row / 3);
+          button.type = "button";
+          button.className = "target-cell";
+          button.dataset.row = row;
+          button.dataset.column = column;
+          button.textContent = compact(result);
+          button.setAttribute("aria-label", `输出第 ${row + 1} 行第 ${column + 1} 列，数值 ${compact(result)}`);
+          button.addEventListener("click", () => {
+            clearInterval(demoTimer);
+            selectDemoCell(row, column);
+          });
+          target.append(button);
+        }
+      }
+      selectDemoCell(1, 1);
+    }
+
+    function updateExplorer() {
+      const x = Number(document.getElementById("x").value);
+      const y = Number(document.getElementById("y").value);
+      const values = ids.map(id => Number(document.getElementById(id).value) || 0);
+      const ws = [(1 - x) * (1 - y), x * (1 - y), (1 - x) * y, x * y];
+      const result = ws.reduce((sum, weight, index) => sum + weight * values[index], 0);
+
+      document.getElementById("xOut").value = format(x);
+      document.getElementById("yOut").value = format(y);
+      cells.forEach((id, index) => { document.getElementById(id).textContent = values[index]; });
+      weights.forEach((id, index) => { document.getElementById(id).textContent = format(ws[index]); });
+      document.getElementById("result").textContent = format(result);
+      document.getElementById("marker").style.left = `${x * 100}%`;
+      document.getElementById("marker").style.top = `${y * 100}%`;
+      document.getElementById("markerLabel").style.left = `${x * 100}%`;
+      document.getElementById("markerLabel").style.top = `${y * 100}%`;
+      document.getElementById("workingFormula").textContent = `P = ${format(ws[0])}*${values[0]} + ${format(ws[1])}*${values[1]} + ${format(ws[2])}*${values[2]} + ${format(ws[3])}*${values[3]} = ${format(result)}`;
+    }
+
+    [...ids, "x", "y"].forEach(id => document.getElementById(id).addEventListener("input", updateExplorer));
+    document.querySelectorAll("[data-answer]").forEach(button => button.addEventListener("click", () => {
+      const feedback = document.getElementById("feedback");
+      feedback.textContent = button.dataset.answer === "right"
+        ? "正确。logits 是连续分数，适合双线性估计；类别编号是离散值，只能用最近邻。"
+        : "不对。双线性会把离散类别编号混成不存在的小数值；softmax 也不是处理标签图的方法。";
+      feedback.style.color = button.dataset.answer === "right" ? "#0f766e" : "#c2410c";
+    }));
+    document.getElementById("playGrid").addEventListener("click", () => {
+      clearInterval(demoTimer);
+      let step = 0;
+      const frame = () => {
+        selectDemoCell(Math.floor(step / 4), step % 4);
+        step += 1;
+        if (step === 16) { clearInterval(demoTimer); }
+      };
+      frame();
+      demoTimer = setInterval(frame, 550);
+    });
+    buildDemoGrid();
+    updateExplorer();
+  </script>
+</body>
+</html>

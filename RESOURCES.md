@@ -8,6 +8,8 @@
   PyTorch 的官方 API 文档。用于确认 logits、类别索引、输出形状和实现细节。
 - [PyTorch: BCEWithLogitsLoss](https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html)
   PyTorch 的官方二分类损失文档。用于二分类像素分割的 logits、掩码形状和数值稳定实现。
+- [PyTorch: interpolate](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.interpolate.html)
+  PyTorch 的上采样官方 API。用于确认语义分割中 logits 的双线性上采样、离散 mask 的最近邻上采样，以及 `align_corners` 的含义。
 - [Deep Learning Book, Chapter 3](https://www.deeplearningbook.org/contents/prob.html)
   Goodfellow、Bengio、Courville 的概率与信息论章节。用于需要进一步理解负对数似然时查阅。
 

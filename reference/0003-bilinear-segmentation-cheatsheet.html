@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>语义分割双线性上采样速查卡</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #17212b; background: #f7f9fb; }
+    body { margin: 0; padding: 32px 20px; } main { max-width: 800px; margin: auto; background: #fff; border: 1px solid #d9e0e6; padding: 32px; }
+    h1, h2 { color: #102a43; } h1 { margin-top: 0; font-size: 28px; } h2 { margin-top: 28px; font-size: 19px; }
+    p, li { line-height: 1.7; } .formula, pre { font-family: Consolas, "Courier New", monospace; background: #eef3f7; padding: 13px; overflow-x: auto; line-height: 1.6; white-space: pre-wrap; }
+    table { width: 100%; border-collapse: collapse; } th, td { padding: 10px; border-bottom: 1px solid #d9e0e6; text-align: left; vertical-align: top; } th { background: #f1f5f8; }
+    .warn { border-left: 4px solid #d97706; background: #fff8eb; padding: 12px 14px; } .ok { color: #0f766e; font-weight: 700; } a { color: #075985; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>语义分割双线性上采样速查卡</h1>
+    <p><strong>一句话：</strong>双线性插值从空间上的四个邻点按距离加权，适合连续的特征和 logits；离散类别标签只用最近邻插值。</p>
+
+    <h2>核心公式</h2>
+    <div class="formula">P = (1-x)(1-y)F00 + x(1-y)F01 + (1-x)yF10 + xyF11</div>
+    <p><code>x,y</code> 是采样点在一个像素小方格中的相对位置，范围为 0 到 1。四项权重相加恒等于 1。</p>
+
+    <h2>分割张量该怎么缩放</h2>
+    <table>
+      <thead><tr><th>数据</th><th>典型形状</th><th>插值方式</th><th>原因</th></tr></thead>
+      <tbody>
+        <tr><td>特征图 / logits</td><td><code>[N,C,H,W]</code></td><td class="ok"><code>bilinear</code></td><td>每个值是连续数值；中间估计有意义。</td></tr>
+        <tr><td>概率图</td><td><code>[N,C,H,W]</code></td><td class="ok"><code>bilinear</code></td><td>各通道值是连续概率或分数。</td></tr>
+        <tr><td>真实类别 mask</td><td><code>[N,H,W]</code></td><td><code>nearest</code></td><td>0、1、2... 是离散类别编号，不能混合。</td></tr>
+      </tbody>
+    </table>
+
+    <h2>PyTorch 模板</h2>
+    <pre>import torch.nn.functional as F
+
+# 上采样预测：先放大 logits，后 argmax
+logits = F.interpolate(
+    logits_small, size=(H, W),
+    mode="bilinear", align_corners=False,
+)
+pred = logits.argmax(dim=1)
+
+# 缩放类别标签：nearest，且恢复 long 类型
+mask_small = F.interpolate(
+    mask.unsqueeze(1).float(), size=(h, w), mode="nearest"
+).squeeze(1).long()</pre>
+
+    <p class="warn"><strong>常见错误：</strong>不要将类别 mask 用 <code>bilinear</code> 放大。比如类别 0 与类别 2 的边界会生成 0.4、1.2 等无效值。多分类分割也不要先对 logits 做 <code>argmax</code> 再进行双线性插值。</p>
+
+    <h2><code>align_corners</code></h2>
+    <p>它控制缩放前后像素坐标的对齐规则。常用写法是 <code>align_corners=False</code>；训练、验证和推理必须保持一致，避免边界出现细小位移。</p>
+
+    <p>学习页：<a href="../lessons/0003-bilinear-upsampling-for-segmentation.html">移动采样点，观察权重</a>。关联知识：<a href="0002-pixel-wise-cross-entropy-cheatsheet.html">像素级交叉熵速查卡</a>。</p>
+  </main>
+</body>
+</html>
