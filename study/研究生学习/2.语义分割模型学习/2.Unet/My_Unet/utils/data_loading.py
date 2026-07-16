@@ -39,6 +39,17 @@ def unique_mask_values(index, mask_directory, mask_suffix):
     mask_file = mask_files[0]
 
     mask = np.asarray(load_image(mask_file))
+        
+    
+
+    # np.set_printoptions(
+    #     threshold=np.inf,
+    #     linewidth=200
+    # )
+
+    # print(mask)
+
+
 
     if mask.ndim == 2:
         return np.unique(mask)
