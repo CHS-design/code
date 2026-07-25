@@ -117,14 +117,13 @@ def train(args):
     # 同时避免把原图无意义地放大到 512 x 512，节省显存。
     input_shape = [256, 256]
 
-    # 创建训练数据集对象
-    # args.data_path: 数据集的根路径， input_shape: 输入图像的尺，num_classes: 输出类别数，表示分割任务中的类别数
-    # augmentation=True: 是否采用数据增强，txt_name="train.txt": 指定用于加载训练数据的文本文件名
+    # 首轮训练先关闭随机增强，建立可复现的 CAMUS 基线。
+    # 后续需要提升泛化时，再单独启用并评估适合超声图像的轻度增强。
     train_dataset = UnetDataset(
     args.data_path,
     input_shape,
     num_classes,
-    augmentation=True,
+    augmentation=False,
     txt_name="train.txt",
     )
     # 验证集必须使用独立的 val.txt，且不能做随机增强。
