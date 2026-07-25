@@ -226,105 +226,117 @@ def train_one_epoch(model, optimizer, train_loader, device, dice_loss, focal_los
 
 
 def evaluate(model, val_loader, device, dice_loss, focal_loss, num_classes):
+    # 验证集为空时，后续平均值没有意义，应立即报错。
+    if len(val_loader) == 0:
+        raise ValueError("Validation loader is empty.")
 
-    cls_weights = np.ones([num_classes], np.float32)
-    val_loss = 0  # 记录总的验证损失
+    # CrossEntropyLoss 需要每个类别一个权重。
+    # 目前所有类别权重相同，后续若发现类别严重不平衡再单独调整。
+    cls_weights = torch.ones(num_classes, dtype=torch.float32, device=device)
 
-    # 设置模型为验证模式
-    model_eval = model.eval()
-    model_eval = model_eval.cuda()
+    # eval(): Dropout 关闭随机失活，BatchNorm 使用已学习的统计量。
+    # to(device): 确保模型与验证图像、标签位于同一设备。
+    model_eval = model.eval().to(device)
 
-    # 初始化累积变量
-    total_pixel_acc = 0
-    total_mean_acc = 0
-    total_mean_iou = 0
-    total_fw_iou = 0
-    num_batches = len(val_loader)
+    # 用样本数加权平均验证损失，避免最后一个小 batch 权重过大。
+    total_loss = 0.0
+    total_samples = 0
 
-    # 遍历验证数据，前向传播
+    # 混淆矩阵：行是真实类别，列是预测类别。
+    # hist[2, 1] 表示“真实心肌被预测为左心室腔”的像素数量。
+    hist = torch.zeros(
+        (num_classes, num_classes), dtype=torch.long, device=device
+    )
+
+    # 验证阶段不构建梯度图，节省显存和计算。
     with torch.no_grad():
-        for iteration, batch in enumerate(val_loader):
-            imgs, pngs, labels = batch  # 获取验证数据
-
-            # 数据准备阶段
-            weights = torch.tensor(cls_weights).to(device)  # 转换类别权重并移动到GPU
+        for imgs, pngs, labels in val_loader:
             imgs = imgs.to(device)
             pngs = pngs.to(device)
             labels = labels.to(device)
+
+            # 输出形状：(B, 4, 256, 256)
             outputs = model_eval(imgs)
 
-            # print("outputs", outputs.shape)
-            # print("pngs", pngs.shape)
-            # 损失计算
+            # pngs 形状：(B, 256, 256)，每个像素的真实类别为 0~3。
             if focal_loss:
-                loss = Focal_Loss(outputs, pngs, weights, num_classes=num_classes)
+                loss = Focal_Loss(outputs, pngs, cls_weights, num_classes)
             else:
-                loss = CE_Loss(outputs, pngs, weights, num_classes=num_classes)
+                loss = CE_Loss(outputs, pngs, cls_weights, num_classes)
 
+            # 若训练启用 Dice Loss，验证损失也必须使用相同组成。
             if dice_loss:
-                main_dice = Dice_loss(outputs, labels)
-                # main_dice = Dice_loss(outputs, pngs)
-                loss = loss + main_dice
+                loss = loss + Dice_loss(outputs, labels)
 
-            # 计算各个指标
-            pixel_acc = pixel_accuracy(outputs, pngs)
-            mean_acc = mean_accuracy(outputs, pngs, num_classes)
-            mean_iou_value = mean_iou(outputs, pngs, num_classes)
-            fw_iou = frequency_weighted_iou(outputs, pngs, num_classes)
+            batch_size = imgs.size(0)
+            total_loss += loss.item() * batch_size
+            total_samples += batch_size
 
-            # 累加到总结果
-            total_pixel_acc += pixel_acc
-            total_mean_acc += mean_acc
-            total_mean_iou += mean_iou_value
-            total_fw_iou += fw_iou
-            val_loss += loss.item()
+            # argmax 将每个像素的 4 个类别得分变成一个预测类别 ID。
+            # predictions 形状：(B, 256, 256)，值为 0~3。
+            predictions = torch.argmax(outputs, dim=1)
 
-            # 打印标题（每个epoch开始时打印一次）
-            if iteration == 0:  # 只在第一个 batch 打印标题
-                epoch_len = len("Epoch") + 12
-                data_num_len = len("data_num") - len("data_num") + 12
-                Pixelacc_len = len("GPU Mem") - len("Pixelacc") + 12
-                Meanacc_len = len("Loss") - len("Meanacc") + 12
-                Meaniou_len = len("LR") - len("Meaniou") + 12
+            # 仅统计合法真实标签，避免异常标签破坏混淆矩阵索引。
+            valid = (pngs >= 0) & (pngs < num_classes)
+            encoded = num_classes * pngs[valid] + predictions[valid]
 
-                print(f"{' ' * epoch_len}"
-                      f"{LogColor.RED}data_num{LogColor.RESET}{' ' * data_num_len}"
-                      f"{LogColor.RED}Pixelacc{LogColor.RESET}{' ' * Pixelacc_len}"
-                      f"{LogColor.RED}Meanacc{LogColor.RESET}{' ' * Meanacc_len}"
-                      f"{LogColor.RED}Meaniou{LogColor.RESET}{' ' * Meaniou_len}"
-                      f"{LogColor.RED}Fwiou{LogColor.RESET}")
+            # 编码后的取值范围是 0~15；重塑后得到 4 x 4 混淆矩阵。
+            hist += torch.bincount(
+                encoded, minlength=num_classes ** 2
+            ).reshape(num_classes, num_classes)
 
-    # 计算平均值
-    avg_pixel_acc = total_pixel_acc / num_batches
-    avg_mean_acc = total_mean_acc / num_batches
-    avg_mean_iou = total_mean_iou / num_batches
-    avg_fw_iou = total_fw_iou / num_batches
-    avg_loss = val_loss / num_batches  # ➕ 平均 loss
+    # 转为 float，便于后续计算比例指标。
+    hist = hist.cpu().numpy().astype(np.float64)
+    true_pixels = hist.sum(axis=1)
+    pred_pixels = hist.sum(axis=0)
+    intersection = np.diag(hist)
+    union = true_pixels + pred_pixels - intersection
 
+    # 每类 IoU = TP / (TP + FP + FN)。
+    class_iou = np.divide(
+        intersection,
+        union,
+        out=np.zeros(num_classes, dtype=np.float64),
+        where=union > 0,
+    )
 
-    # 将结果保存到字典中
+    # Pixel Accuracy：所有预测正确像素 / 所有像素。
+    pixel_acc = intersection.sum() / max(hist.sum(), 1.0)
+
+    # Mean Accuracy：逐类召回率的平均，仅忽略验证集中完全不存在的类别。
+    class_recall = np.divide(
+        intersection,
+        true_pixels,
+        out=np.zeros(num_classes, dtype=np.float64),
+        where=true_pixels > 0,
+    )
+    mean_acc = class_recall[true_pixels > 0].mean()
+
+    # 标准 mIoU 包含背景；前景 mIoU 只平均 1、2、3 类，
+    # 更适合观察三个心脏结构的实际分割效果。
+    valid_iou = union > 0
+    mean_iou = class_iou[valid_iou].mean()
+    foreground_valid = valid_iou.copy()
+    foreground_valid[0] = False
+    foreground_miou = class_iou[foreground_valid].mean()
+
+    # Frequency Weighted IoU：按各类别真实像素占比加权。
+    class_frequency = true_pixels / max(hist.sum(), 1.0)
+    fw_iou = (class_frequency * class_iou).sum()
+
     metrics = {
-        'Pixel Accuracy': avg_pixel_acc,
-        'Mean Accuracy': avg_mean_acc,
-        'Mean IoU': avg_mean_iou,
-        'Frequency Weighted IoU': avg_fw_iou,
-        'Loss': avg_loss  # ➕ 加入字典
+        "Pixel Accuracy": float(pixel_acc),
+        "Mean Accuracy": float(mean_acc),
+        "Mean IoU": float(mean_iou),
+        "Foreground Mean IoU": float(foreground_miou),
+        "Frequency Weighted IoU": float(fw_iou),
+        "Loss": total_loss / total_samples,
+        "Class IoU": class_iou.tolist(),
     }
 
-    epoch_len = len("Epoch") + 12
-    batch_len = data_num_len + len("data_num") - len(str(f"{iteration + 1}/{len(val_loader)}"))
-    avg_pixel_acc_len = Pixelacc_len + len("Pixelacc") - len(str(f"{avg_pixel_acc:.2f}"))
-    avg_mean_acc_len = Meanacc_len + len("Meanacc") - len(str(f"{avg_mean_acc:.2f}"))
-    avg_Mean_iou_len = Meaniou_len + len("Meaniou") - len(str(f"{avg_mean_iou:.2f}"))
-
-    # 使用 \r 在同一行更新输出
-    print(f"{' ' * (epoch_len)}"
-          f"{iteration + 1}/{len(val_loader)}{' ' * batch_len}"
-          f"{avg_pixel_acc:.2f}{' ' * avg_pixel_acc_len}"
-          f"{avg_mean_acc:.2f}{' ' * avg_mean_acc_len}"
-          f"{avg_mean_iou:.2f}{' ' * avg_Mean_iou_len}"
-          f"{avg_fw_iou:.2f}", end='', flush=True)
-    print(f"\n{LogColor.GREEN}")
-    time.sleep(1)  # 加一点延迟，防止输出闪烁过快
-
+    print(
+        f"Val | loss={metrics['Loss']:.4f} | "
+        f"mIoU={metrics['Mean IoU']:.4f} | "
+        f"fg-mIoU={metrics['Foreground Mean IoU']:.4f}"
+    )
     return metrics
