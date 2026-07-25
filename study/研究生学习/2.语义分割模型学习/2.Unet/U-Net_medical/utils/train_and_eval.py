@@ -109,9 +109,14 @@ def train_one_epoch(model, optimizer, train_loader, device, dice_loss, focal_los
 
     total_f_score = 0
 
-    # 设置模型为训练模式
+    # 切换为训练模式：
+    # Dropout 使用随机失活；BatchNorm 使用当前批次更新统计量。
     model_train = model.train()
-    model_train = model_train.cuda()
+
+    # 模型与 imgs、pngs、labels 必须位于同一设备。
+    # device 由 train_medical.py 决定，可能是 cuda 或 cpu。
+    # .to(device) 不改变网络结构和张量形状，只改变参数存放位置。
+    model_train = model_train.to(device)
 
     for iteration, batch in enumerate(train_loader):
         imgs, pngs, labels = batch  # 获取输入图像、标签和分割目标
