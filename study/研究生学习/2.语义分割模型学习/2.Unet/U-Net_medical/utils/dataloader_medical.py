@@ -13,8 +13,11 @@ class UnetDataset(Dataset):
     def __init__(self, data_path, input_shape, num_classes, augmentation=True, txt_name: str = "train.txt"):
         super(UnetDataset, self).__init__()
 
-        # 读取train.txt和val.txt,test.txt文件，获取训练和验证集的图像ID
-        with open(os.path.join(data_path, "VOC2012/ImageSets/Segmentation", txt_name), "r") as f:
+    # CAMUS 的划分文件位于：
+    # C:\Users\admin\Desktop\CAMUS\splits\train.txt
+    # C:\Users\admin\Desktop\CAMUS\splits\val.txt
+        with open(os.path.join(data_path, "splits", txt_name), "r", encoding="ascii") as f:
+    # 每一行只有一个样本 ID，例如：163
             self.annotation_lines = f.readlines()
 
         # 初始化其他参数
@@ -29,31 +32,71 @@ class UnetDataset(Dataset):
         return self.length
 
     def __getitem__(self, index):
-        # 读取单个样本
-        annotation_line = self.annotation_lines[index]  # 获取对应的annotation
-        name = annotation_line.split()[0]  # 获取文件名，通常是图像文件的名称
+        # 从 train.txt 或 val.txt 取出一个样本 ID，例如 "163\n"。
+        annotation_line = self.annotation_lines[index]
+        name = annotation_line.strip()
 
-        #   从文件中读取图像
-        jpg = Image.open(os.path.join(os.path.join(self.data_path, "VOC2012/JPEGImages"), name + ".png"))
-        png = Image.open(os.path.join(os.path.join(self.data_path, "VOC2012/SegmentationClass"), name + ".png"))
+        # CAMUS 中图像与掩码文件名一一对应：
+        # train_images/163.png <-> train_masks/163.png
+        jpg = Image.open(
+            os.path.join(self.data_path, "train_images", name + ".png")
+        )
 
-        # 如果是训练阶段，进行随机数据增强
-        jpg, png = self.get_random_data(jpg, png, self.input_shape, random=self.augmentation)
+        # 掩码必须是单通道 L 模式。
+        # 这样标签会保持为 0、85、170、255，而不会带有额外颜色通道。
+        png = Image.open(
+            os.path.join(self.data_path, "train_masks", name + ".png")
+        ).convert("L")
 
-        # 图像预处理
-        jpg = np.transpose(preprocess_input(np.array(jpg, np.float64)), [2, 0, 1])
-        # 标签转换成numpy数组
-        png = np.array(png)
+        # 图像与掩码必须执行完全相同的几何变换。
+        # 图像使用双三次插值，掩码在 get_random_data 中使用最近邻插值，
+        # 因而不会产生不属于任何类别的中间标签。
+        jpg, png = self.get_random_data(
+            jpg, png, self.input_shape, random=self.augmentation
+        )
 
-        # -------------------------------------------------------#
-        #   这里的标签处理方式和普通voc的处理方式不同
-        #   将大于127.5的像素点设置为目标像素点。
-        # -------------------------------------------------------#
-        modify_png = np.zeros_like(png)
-        modify_png[png >= 127.5] = 1
-        seg_labels = modify_png
-        seg_labels = np.eye(self.num_classes + 1)[seg_labels.reshape([-1])]
-        seg_labels = seg_labels.reshape((int(self.input_shape[0]), int(self.input_shape[1]), self.num_classes + 1))
+        # cvtColor 会把灰度图复制为 3 通道 RGB，
+        # 因此仍能输入 ResNet-50 的 3 通道第一层卷积。
+        # 转置后形状为 (3, H, W)，并将像素从 0~255 缩放到 0~1。
+        jpg = np.transpose(
+            preprocess_input(np.array(jpg, np.float64)),
+            [2, 0, 1]
+        )
+
+        # 读取增强后的单通道掩码，形状为 (H, W)。
+        raw_mask = np.array(png, dtype=np.uint8)
+
+        # CAMUS 只允许这四个原始像素值。
+        # 先检查能避免异常掩码被悄悄当作某一类参与训练。
+        raw_values = np.unique(raw_mask)
+        valid_values = np.array([0, 85, 170, 255], dtype=np.uint8)
+        if not np.isin(raw_values, valid_values).all():
+            raise ValueError(f"Unexpected mask values in {name}: {raw_values}")
+
+        # 将 CAMUS 原始掩码值映射成 CrossEntropyLoss 需要的连续类别 ID：
+        # 0   -> 背景
+        # 85  -> 左心室腔
+        # 170 -> 心肌
+        # 255 -> 左心房
+        modify_png = np.zeros_like(raw_mask, dtype=np.int64)
+        modify_png[raw_mask == 85] = 1
+        modify_png[raw_mask == 170] = 2
+        modify_png[raw_mask == 255] = 3
+
+        # modify_png 供交叉熵损失使用，形状为 (H, W)，值只能是 0~3。
+        #
+        # seg_labels 供项目现有 Dice_loss 使用。
+        # 该 Dice_loss 约定标签最后多保留一个 ignore 通道，
+        # 所以当第 3 步把 num_classes 统一为 4 时，
+        # seg_labels 形状会是 (H, W, 5)，最后一维不是第五种解剖类别。
+        seg_labels = np.eye(self.num_classes + 1, dtype=np.float32)[
+            modify_png.reshape([-1])
+        ]
+        seg_labels = seg_labels.reshape(
+            int(self.input_shape[0]),
+            int(self.input_shape[1]),
+            self.num_classes + 1,
+        )
 
         return jpg, modify_png, seg_labels
 
