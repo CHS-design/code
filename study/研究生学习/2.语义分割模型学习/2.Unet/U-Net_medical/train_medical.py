@@ -172,7 +172,8 @@ def train(args):
     # 训练开始
     start_time = time.time()
 
-    best_acc = 0.0  # 最优准确率初始化为0
+    # 用前景 mIoU 选择最佳模型；负无穷确保第一个 epoch 会保存权重。
+    best_foreground_miou = -float("inf")
     best_model_path = os.path.join(weights_folder, f"best_model_{args.num_classes}.pth")  # 最优模型保存路径
     last_model_path = os.path.join(weights_folder, f"last_model_{args.num_classes}.pth")  # 最后一轮模型保存路径
 
@@ -180,12 +181,12 @@ def train(args):
     val_losses = []
     val_metrics_history = []
 
-    # 是否使用focal loss来防止正负样本不平衡，是否给不同种类赋予不同的损失权值，默认是平衡的。
+    # 暂不使用 Focal Loss，避免同时叠加过多类别不平衡策略。
     focal_loss = False
-    #  种类少（几类）时，设置为True
-    #  种类多（十几类）时，如果batch_size比较大（10以上），那么设置为True
-    #  种类多（十几类）时，如果batch_size比较小（10以下），那么设置为False
-    dice_loss = False
+
+    # CE Loss 学习每个像素类别，Dice Loss 优化预测区域与真实区域的重叠。
+    # 对心肌等较小结构，二者相加通常比单独 CE Loss 更合适。
+    dice_loss = True
 
     #   开始模型训练
     for epoch in range(0, train_epoch):
@@ -204,13 +205,19 @@ def train(args):
         val_losses.append(metrics["Loss"])
         val_metrics_history.append(metrics)
 
-        current_acc = float(metrics["Mean Accuracy"])  # 转换为浮动准确率（百分比）
+        # 前景 mIoU 只平均左心室腔、心肌和左心房，
+        # 不让大量背景像素影响最佳模型选择。
+        current_foreground_miou = float(metrics["Foreground Mean IoU"])
 
-        # 更新最优准确率并保存最优模型
-        # 保存最优模型
-        if current_acc > best_acc:
-            best_acc = current_acc
+        # 仅当独立验证集的前景分割效果更好时，覆盖最佳权重。
+        if current_foreground_miou > best_foreground_miou:
+            best_foreground_miou = current_foreground_miou
             torch.save(model.state_dict(), best_model_path)
+
+            print(
+                f"Saved best model: "
+                f"foreground mIoU={best_foreground_miou:.4f}"
+            )
 
 
         # 保存最后一次模型
