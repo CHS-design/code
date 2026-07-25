@@ -99,8 +99,9 @@ def get_optimizer_and_lr(model, batch_size, train_epoch, momentum, weight_decay)
 
 def train(args):
     seed_everything(11)  # 设置种子
-
-    num_classes = args.num_classes + 1  # 类别加上背景类
+    # num_classes 表示总类别数，包含背景。
+    # CAMUS: 0=背景，1=左心室腔，2=心肌，3=左心房，共 4 类。
+    num_classes = args.num_classes
     train_epoch = args.epochs  # 训练轮次
     batch_size = args.batch_size  # 设置batch size
     num_workers = args.workers  # 计算可用的工作线程数，通常取CPU核心数、batch_size和8中的最小值
@@ -111,13 +112,30 @@ def train(args):
     # 调用函数获取新的exp文件夹和weights文件夹路径
     exp_folder, weights_folder = create_exp_folder()
 
-    input_shape = [512, 512]  # 一定要是32的整数倍
+    # CAMUS 原图和掩码都是 256 x 256。
+    # 256 能被 32 整除，满足当前 ResNet-50 编码器连续下采样的要求，
+    # 同时避免把原图无意义地放大到 512 x 512，节省显存。
+    input_shape = [256, 256]
 
     # 创建训练数据集对象
     # args.data_path: 数据集的根路径， input_shape: 输入图像的尺，num_classes: 输出类别数，表示分割任务中的类别数
     # augmentation=True: 是否采用数据增强，txt_name="train.txt": 指定用于加载训练数据的文本文件名
-    train_dataset = UnetDataset(args.data_path, input_shape, num_classes, augmentation=True, txt_name="train.txt")
-    val_dataset = UnetDataset(args.data_path, input_shape, num_classes, augmentation=True, txt_name="trainval.txt")
+    train_dataset = UnetDataset(
+    args.data_path,
+    input_shape,
+    num_classes,
+    augmentation=True,
+    txt_name="train.txt",
+    )
+    # 验证集必须使用独立的 val.txt，且不能做随机增强。
+    # 否则每次验证都会看到不同的图像，指标无法稳定比较。
+    val_dataset = UnetDataset(
+    args.data_path,
+    input_shape,
+    num_classes,
+    augmentation=False,
+    txt_name="val.txt",
+    )
 
     # 加载训练集的DataLoader
     train_loader = DataLoader(train_dataset,
@@ -132,7 +150,7 @@ def train(args):
 
     # 加载验证集的DataLoader
     val_loader = DataLoader(val_dataset,
-                            shuffle=True,
+                            shuffle=False,  # 验证集不需要打乱数据
                             batch_size=batch_size,
                             num_workers=num_workers,
                             pin_memory=True,
@@ -212,8 +230,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="pytorch fcn training")
     parser.add_argument("--weights", default="weights/unet_resnet_voc.pth",
                         help="Path to the directory containing model weights")
-    parser.add_argument("--data-path", default="VOCdevkit", help="VOCdevkit root")
-    parser.add_argument("--num-classes", default=1, type=int)
+    parser.add_argument("--data-path", default=r"C:\Users\admin\Desktop\CAMUS", help="CAMUS root")
+    parser.add_argument("--num-classes", default=4, type=int,help="总类别数，包含背景；CAMUS 固定为 4")
     parser.add_argument("--device", default="cuda", help="training device")
     parser.add_argument("--batch-size", default=8, type=int)
     parser.add_argument("--epochs", default=100, type=int, metavar="N", help="number of total epochs to train")
